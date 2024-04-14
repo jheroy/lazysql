@@ -50,7 +50,7 @@ func NewResultsFilter() *ResultsTableFilter {
 
 		}
 	})
-	recordsFilter.Input.SetAutocompleteStyles(tcell.ColorBlack, tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor).Background(tcell.ColorBlack), tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor).Background(tcell.ColorBlack))
+	recordsFilter.Input.SetAutocompleteStyles(tcell.ColorBlack, tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor).Background(tcell.ColorBlack), tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor).Background(tcell.ColorPurple))
 
 	recordsFilter.AddItem(recordsFilter.Label, 6, 0, false)
 	recordsFilter.AddItem(recordsFilter.Input, 0, 1, false)

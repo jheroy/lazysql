@@ -5,7 +5,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-var App = tview.NewApplication()
+var App = tview.NewApplication().EnableMouse(true)
 
 func init() {
 	Styles := tview.Theme{

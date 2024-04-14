@@ -2,12 +2,11 @@ package components
 
 import (
 	"fmt"
-
+	"github.com/gdamore/tcell/v2"
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/models"
-
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"strings"
 )
 
 type TreeState struct {
@@ -17,9 +16,11 @@ type TreeState struct {
 
 type Tree struct {
 	*tview.TreeView
-	state       *TreeState
-	DBDriver    drivers.Driver
-	subscribers []chan models.StateChange
+	state             *TreeState
+	DBDriver          drivers.Driver
+	subscribers       []chan models.StateChange
+	filtedNodes       []*tview.TreeNode
+	selectedFiledNode int
 }
 
 func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
@@ -128,6 +129,44 @@ func NewTree(dbName string, dbdriver drivers.Driver) *Tree {
 			}
 		case 'g':
 			tree.SetCurrentNode(rootNode)
+		case 'n':
+			tree.NextFilteredNode()
+			return event
+		case '/':
+			oldInputCapture := tree.GetInputCapture()
+			tree.SetInputCapture(nil)
+			inputField := tview.NewInputField()
+			// inputField.SetText(cell.Text)
+			inputField.SetFieldBackgroundColor(tview.Styles.PrimaryTextColor)
+			inputField.SetFieldTextColor(tcell.ColorBlack)
+			inputField.SetChangedFunc(func(text string) {
+				tree.UpdateFilteredNodes(text)
+			})
+
+			inputField.SetDoneFunc(func(key tcell.Key) {
+				if key == tcell.KeyEnter || key == tcell.KeyEscape {
+					if key == tcell.KeyEnter {
+						tree.NextFilteredNode()
+					} else {
+						tree.clearFilteredNodes()
+					}
+
+					// table.SetInputCapture(table.tableInputCapture)
+					tree.SetInputCapture(oldInputCapture)
+					// table.Page.RemovePage("edit")
+					MainPages.RemovePage("search")
+					App.SetFocus(tree)
+				}
+
+				// if callback != nil {
+				// 	callback(newValue, row, col)
+				// }
+			})
+
+			x, y, width, height := tree.GetRect()
+			inputField.SetRect(x+1, y+height-1, width-2, 1)
+			MainPages.AddPage("search", inputField, false, true)
+			App.SetFocus(inputField)
 		}
 		return event
 	})
@@ -251,6 +290,50 @@ func (tree *Tree) ForceRemoveHighlight() {
 		}
 
 	}
+}
+
+func (tree *Tree) clearFilteredNodes() {
+	tree.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
+		node.SetColor(tcell.ColorWhite.TrueColor())
+		tree.filtedNodes = []*tview.TreeNode{}
+		tree.selectedFiledNode = -1
+		return true
+	})
+}
+
+func (tree *Tree) UpdateFilteredNodes(text string) {
+	tree.clearFilteredNodes()
+
+	// text := field.GetText()
+	// text := inputField.GetText()
+	tree.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
+		if nowText := node.GetText(); strings.Contains(nowText, text) {
+			node.SetColor(tcell.ColorPurple)
+			tree.filtedNodes = append(tree.filtedNodes, node)
+			tree.selectedFiledNode = -1
+		}
+
+		return true
+	})
+}
+
+func (tree *Tree) NextFilteredNode() {
+	if len(tree.filtedNodes) == 0 {
+		return
+	}
+
+	selectNode := tree.filtedNodes[(tree.selectedFiledNode+1)%len(tree.filtedNodes)]
+
+	tree.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
+
+		if node == selectNode {
+			tree.SetCurrentNode(node)
+			tree.selectedFiledNode += 1
+			tree.selectedFiledNode %= len(tree.filtedNodes)
+			return true
+		}
+		return true
+	})
 }
 
 // Focus func

@@ -3,14 +3,27 @@ package drivers
 import (
 	"database/sql"
 	"fmt"
+	"github.com/go-sql-driver/mysql"
+	"github.com/xo/dburl"
+	"io/ioutil"
+	"net"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/jorgerojas26/lazysql/models"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/xo/dburl"
+	"golang.org/x/crypto/ssh"
 )
+
+type ViaSSHDialer struct {
+	client *ssh.Client
+}
+
+func (self *ViaSSHDialer) Dial(addr string) (net.Conn, error) {
+	return self.client.Dial("tcp", addr)
+}
 
 type MySQL struct {
 	Connection *sql.DB
@@ -22,18 +35,79 @@ func (db *MySQL) TestConnection(urlstr string) (err error) {
 }
 
 func (db *MySQL) Connect(urlstr string) (err error) {
+	var sshUrl, sshUser, sshKey string
+	if strings.Contains(urlstr, "ssh://") {
+		urlSplit := strings.Split(urlstr, "+")
+		sshUrl, urlstr = urlSplit[0], urlSplit[1]
+		sshUrl = strings.Split(sshUrl, "://")[1]
+		sshSplit := strings.Split(sshUrl, "@")
+		sshUser, sshUrl = sshSplit[0], sshSplit[1]
+		if strings.Contains(sshUser, ":") {
+			sshUserSplit := strings.Split(sshUser, ":")
+			sshUser = sshUserSplit[0]
+			sshKey = sshUserSplit[1]
+		}
+	}
+
 	db.SetProvider("mysql")
-
-	db.Connection, err = dburl.Open(urlstr)
+	pemBytes, err := ioutil.ReadFile(os.Getenv("HOME") + "/.ssh/id_rsa")
 	if err != nil {
-		return err
+		return fmt.Errorf("Reading private key file failed %v", err)
 	}
 
-	err = db.Connection.Ping()
+	// generate signer instance from plain key
+	signer, err := ssh.ParsePrivateKey(pemBytes)
 	if err != nil {
-		return err
+		return fmt.Errorf("Parsing plain private key failed %v", err)
 	}
 
+	// The client configuration with configuration option to use the ssh-agent
+	sshConfig := &ssh.ClientConfig{
+		User: sshUser,
+		Auth: []ssh.AuthMethod{},
+	}
+
+	sshConfig.Auth = append(sshConfig.Auth, ssh.PublicKeys(signer))
+	sshConfig.HostKeyCallback = ssh.InsecureIgnoreHostKey()
+	// When there's a non empty password add the password AuthMethod
+	// sshPass := "vagrant"
+	if sshKey != "" {
+		sshConfig.Auth = append(sshConfig.Auth, ssh.PasswordCallback(func() (string, error) {
+			return sshKey, nil
+		}))
+	}
+	// Connect to the SSH Server
+	if sshcon, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", sshUrl, 22), sshConfig); err == nil {
+		mysql.RegisterDial("ssh", (&ViaSSHDialer{sshcon}).Dial)
+		url, err := dburl.Parse(urlstr)
+		if err != nil {
+			return err
+		}
+		// db.Connection, err = dburl.Open(urlstr)
+
+		// urlSplit := strings.Split(urlstr, "/")
+		// dbname := urlSplit[len(urlSplit)-1]
+		password, _ := url.User.Password()
+		db.Connection, err = sql.Open("mysql", fmt.Sprintf("%s:%s@ssh(%s)/%s", url.User.Username(), password, url.Host, ""))
+		// db.Connection, err = sql.Open("mysql", url.DSN)
+		if err != nil {
+			return err
+		}
+
+		err = db.Connection.Ping()
+		if err != nil {
+			return err
+		}
+
+		// if _, err := db.Connection.Query("SELECT Rid FROM roles ORDER BY rid"); err != nil {
+		// 	return err
+		// }
+		// db.Connection.Close()
+
+	} else {
+		// return fmt.Errorf("ssh %s@%s, error: %s", sshUser, sshUrl, err)
+		return err
+	}
 	return nil
 }
 
@@ -150,6 +224,7 @@ func (db *MySQL) GetConstraints(table string) (results [][]string, err error) {
 }
 
 func (db *MySQL) GetForeignKeys(table string) (results [][]string, err error) {
+	return results, err
 	splitTableString := strings.Split(table, ".")
 	database := splitTableString[0]
 	tableName := splitTableString[1]

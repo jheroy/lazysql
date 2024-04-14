@@ -353,7 +353,7 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 		}
 		table.SetInputCapture(nil)
-	} else if rune == 'c' {
+	} else if rune == 'e' {
 		table.StartEditingCell(selectedRowIndex, selectedColumnIndex, func(newValue string, row, col int) {
 			cellReference := table.GetCell(row, 0).GetReference()
 
@@ -475,14 +475,45 @@ func (table *ResultsTable) tableInputCapture(event *tcell.EventKey) *tcell.Event
 
 	if len(table.GetRecords()) > 0 {
 		if rune == 'J' {
+			// selectedRowIndex, selectedColumnIndex := table.GetSelection()
+
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "DESC")
+			table.Select(selectedRowIndex, selectedColumnIndex)
 
 		} else if rune == 'K' {
 			currentColumnName := table.GetColumnNameByIndex(selectedColumnIndex)
 			table.Pagination.SetOffset(0)
 			table.SetSortedBy(currentColumnName, "ASC")
+			table.Select(selectedRowIndex, selectedColumnIndex)
+		} else if rune == 'Y' {
+			// selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
+			// table.GetColumns()
+
+			err := clipboard.Init()
+
+			if err == nil {
+				text := []byte(strings.Join(table.GetRecords()[selectedRowIndex], ","))
+				if text != nil {
+					clipboard.Write(clipboard.FmtText, text)
+				}
+			}
+		} else if event.Key() == tcell.KeyCtrlY {
+			// selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
+
+			err := clipboard.Init()
+			if err == nil {
+				var text strings.Builder
+				for i := 1; i < table.GetRowCount(); i++ {
+					text.WriteString(table.GetRecords()[i][selectedColumnIndex] + "\n")
+				}
+
+				// text := []byte(strings.Join(table.GetRecords()[selectedRowIndex], ","))
+				// if text != nil {
+				clipboard.Write(clipboard.FmtText, []byte(text.String()))
+				// }
+			}
 		} else if rune == 'y' {
 			selectedCell := table.GetCell(selectedRowIndex, selectedColumnIndex)
 
@@ -811,7 +842,7 @@ func (table *ResultsTable) SetCurrentSort(sort string) {
 }
 
 func (table *ResultsTable) SetSortedBy(column string, direction string) {
-	sort := fmt.Sprintf("%s %s", column, direction)
+	sort := fmt.Sprintf("`%s` %s", column, direction)
 
 	if table.GetCurrentSort() != sort {
 		where := ""
@@ -959,7 +990,8 @@ func (table *ResultsTable) StartEditingCell(row int, col int, callback func(newV
 	})
 
 	x, y, width := cell.GetLastPosition()
-	inputField.SetRect(x, y, width+1, 1)
+	inputField.SetRect(x-1, y, width+2, 1)
+
 	table.Page.AddPage("edit", inputField, false, true)
 	App.SetFocus(inputField)
 }
